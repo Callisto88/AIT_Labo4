@@ -1,0 +1,60 @@
+version: '3.3'
+networks:
+  app_net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+      - subnet: 172.16.238.0/24
+services:
+  haproxy:
+    build:
+      context: ./ha
+      dockerfile: Dockerfile
+    container_name: ha
+    restart: always
+    ports:
+      - "80:80"
+      - "1936:1936"
+      - "9999:9999"
+    links:
+      - webapp1
+      - webapp2
+    environment:
+      - S1_PORT_3000_TCP_ADDR=172.16.238.11
+      - S2_PORT_3000_TCP_ADDR=172.16.238.12
+    networks:
+      app_net:
+        ipv4_address: 172.16.238.10
+  webapp1:
+    image: softengheigvd/webapp:s1
+    build:
+      context: ./webapp
+      dockerfile: Dockerfile
+    container_name: s1
+    restart: always
+    expose:
+      - "3000"
+    environment:
+      - SERVER_TAG=s1
+      - SERVER_NAME=s1
+      - SERVER_IP=172.16.238.11
+    networks:
+      app_net:
+        ipv4_address: 172.16.238.11
+  webapp2:
+    image: softengheigvd/webapp:s2
+    build:
+      context: ./webapp
+      dockerfile: Dockerfile
+    container_name: s2
+    restart: always
+    expose:
+      - "3000"
+    environment:
+      - SERVER_TAG=s2
+      - SERVER_NAME=s2
+      - SERVER_IP=172.16.238.12
+    networks:
+      app_net:
+        ipv4_address: 172.16.238.12
