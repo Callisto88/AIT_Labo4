@@ -33,8 +33,6 @@ services:
       dockerfile: Dockerfile
     container_name: s1
     restart: always
-    expose:
-      - "3000"
     environment:
       - SERVER_TAG=s1
       - SERVER_NAME=s1
@@ -49,8 +47,6 @@ services:
       dockerfile: Dockerfile
     container_name: s2
     restart: always
-    expose:
-      - "3000"
     environment:
       - SERVER_TAG=s2
       - SERVER_NAME=s2
