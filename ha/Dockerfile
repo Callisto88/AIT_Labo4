@@ -51,9 +51,5 @@ EXPOSE 80 1936
 # Define an environment variable
 ENV ROLE balancer
 
-# TODO: [S6] Replace the following instruction
-# Command executed when the container starts
-# CMD [ "/etc/services.d/serf/run" ]
-# ENTRYPOINT ["/usr/bin/s6-svscan","/etc/s6"]
 # This will start S6 as our main process in our container
 ENTRYPOINT ["/init"]

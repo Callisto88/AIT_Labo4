@@ -14,11 +14,113 @@ An introduction describing briefly the lab
 
 *1. Do you think we can use the current solution for a production environment? What are the main problems when deploying it in a production environment?*
 
-La structure du labo précédent ne convient pas à une utilisation en production. En effet, la solution mise en place au labo 3 est beaucoup trop statique et implique trop de downtime pour être utilisé en production.
+La structure du labo précédent ne convient pas à une utilisation en production. En effet, la solution mise en place au labo 3 est beaucoup trop statique et implique trop de downtime en cas de modifications pour être utilisé en production.
 
 *2. Describe what you need to do to add new`webapp` container to the infrastructure. Give the exact steps of what you have to do without modifiying the way the things are done. Hint: You probably have to modify some configuration and script files in a Docker image.*
 
 Il faut modifier le script de provisioning ([re]provision.sh) pour y ajouter des containers webapp supplémentaires. Aussi, il faut adapter la configuration d'HAProxy pour rajouter les noeuds correspondants.
+
+Plus concrètement voici les ajouts que je ferai :
+
+Dans le fichier **provision.sh** (*diff entre l'original et ce que je propose*)
+
+```bash
+3,7d2
+> if [[ ! ${NUMBER_OF_INSTANCES} ]]; then
+> 	echo "First define NUMBER_OF_INSTANCES, for example 'export NUMBER_OF_INSTANCES=10'"
+> 	exit 1
+> fi
+>
+
+33,36c28,31
+> for ((i=0; i <NUMBER_OF_INSTANCES; i++)); do
+>     sudo docker rm -f s${i} 2>/dev/null || true
+>     sudo docker run -d --restart=always -e "TAG=s${i}" --name s${i} softengheigvd/webapp
+> done
+---
+< sudo docker rm -f s1 2>/dev/null || true
+< sudo docker rm -f s2 2>/dev/null || true
+< sudo docker run -d --restart=always -e "TAG=s1" --name s1 softengheigvd/webapp
+< sudo docker run -d --restart=always -e "TAG=s2" --name s2 softengheigvd/webapp
+
+41c36,37
+> sudo docker run -d -p 80:80 -p 1936:1936 -p 9999:9999 --restart=always -v /supervisor:/supervisor $(for ((i=0; i <NUMBER_OF_INSTANCES; i++)); do echo "--link s${i} "; done) --name ha softengheigvd/ha
+---
+< sudo docker run -d -p 80:80 -p 1936:1936 -p 9999:9999 --restart=always -v /supervisor:/supervisor --link s1 --link s2 --name ha softengheigvd/ha
+```
+
+Dans le fichier **reprovision.sh** (*diff entre l'original et ce que je propose*)
+
+```bash
+> if [[ ! ${NUMBER_OF_INSTANCES} ]]; then
+> 	echo "First define NUMBER_OF_INSTANCES, for example 'export NUMBER_OF_INSTANCES=10'"
+> 	exit 1
+> fi
+>
+
+27,29c22,23
+> for ((i=0; i <NUMBER_OF_INSTANCES; i++)); do
+>     sudo docker run -d --restart=always -e "TAG=s${i}" --name s${i} softengheigvd/webapp
+> done
+---
+< sudo docker run -d --restart=always -e "TAG=s1" --name s1 softengheigvd/webapp
+< sudo docker run -d --restart=always -e "TAG=s2" --name s2 softengheigvd/webapp
+
+33c27
+> sudo docker run -d -p 80:80 -p 1936:1936 -p 9999:9999 --restart=always -v /supervisor:/supervisor $(for ((i=0; i <NUMBER_OF_INSTANCES; i++)); do echo "--link s${i} "; done) --name ha softengheigvd/ha
+---
+< sudo docker run -d -p 80:80 -p 1936:1936 -p 9999:9999 --restart=always -v /supervisor:/supervisor --link s1 --link s2 --name ha softengheigvd/ha
+\ No newline at end of file
+```
+
+Dans le fichier **haproxy.cfg**, ajout d'une ligne '**# !!!BACKENDS_DEFINITION!!!**' pour la substitution des backends au déploiement (en se basant sur la variable d'environnement définie plus haut '**NUMBER_OF_INSTANCES**'). Cette version de la configuration devient une sorte de template
+
+```bash
+>     # !!!BACKENDS_DEFINITION!!!
+---
+<     server s1 <s1>:3000 check
+<     server s2 <s2>:3000 check
+```
+
+Dans le script **run.sh**
+
+```bash
+#!/bin/bash
+rsyslogd -c5 2>/dev/null
+
+# if the config file is available in a bind-mounted directory, copy it from there
+cp /config/haproxy.cfg /usr/local/etc/haproxy/haproxy.cfg
+
+for ((i=0; i <NUMBER_OF_INSTANCES; i++)); do echo "    server s${i} <s${i}>:3000 check"; done >/tmp/backends
+sed -E "/# \!\!\!BACKENDS_DEFINITION\!\!\!/r /tmp/backends" /usr/local/etc/haproxy/haproxy.cfg
+
+haproxy -f /usr/local/etc/haproxy/haproxy.cfg -p /var/run/haproxy.pid
+```
+
+Et enfin, dans le fichier **Dockerfile**, rajoute de notre variable d'environnement qui va définir le nombre de backends à déployer au moment du run.
+
+```dockerfile
+7a8,9
+> ENV NUMBER_OF_INSTANCES 5
+>
+```
+
+A partir de là on peut stopper les containers, définir cette variable d'environnement au niveau du Dockerfile et reprovisionner l'environnement grâce au script **reprovision.sh**
+
+En prenant, par exemple, 5 instances cela nous donne bien 5 containers avec la webapp, et un container avec le HAProxy qui dispatche les requêtes entre ces 5 backends.
+
+```bash
+$ docker ps
+CONTAINER ID        IMAGE                     COMMAND                  CREATED             STATUS              PORTS                                                                NAMES
+21323a5643fc        docker_custom_haproxy     "/docker-entrypoint.…"   4 seconds ago       Up 2 seconds        0.0.0.0:80->80/tcp, 0.0.0.0:1936->1936/tcp, 0.0.0.0:9999->9999/tcp   ha
+5c44574415ef        softengheigvd/webapp:s1   "./run.sh"               17 seconds ago      Up 14 seconds       3000/tcp                                                             s1
+0f4a61c7c8a4        softengheigvd/webapp:s2   "./run.sh"               17 seconds ago      Up 14 seconds       3000/tcp                                                             s2
+4efb12e8aaa9        softengheigvd/webapp:s4   "./run.sh"               28 seconds ago      Up 26 seconds       3000/tcp                                                             s4
+71c8fe7c9bc1        softengheigvd/webapp:s5   "./run.sh"               28 seconds ago      Up 26 seconds       3000/tcp                                                             s5
+63eccb3dde0c        softengheigvd/webapp:s3   "./run.sh"               28 seconds ago      Up 26 seconds       3000/tcp                                                             s3
+```
+
+Cette configuration va offrir un tout petit plus de souplesse dans le sens où il suffit désormais de définir la variable d'environnement **NUMBER_OF_INSTANCES** pour adapter le nombre de backend. Cependant cette solution n'est pas très robuste ni très dynamique dans le sens où on passe toujours pas une phase de downtime pour ajouter ou retirer des backends. Il faut à chaque fois reprovisionner les containers (voir script **reprovision.sh** plus haut).
 
 *3. Based on your previous answers, you have detected some issues in the current solution. Now propose a better approach at a high level.*
 
@@ -36,13 +138,15 @@ Les containers tels que définis actuellement ne sont pas designés pour exécut
 
 *6. What happens if we add more web server nodes? Do you think it is really dynamic? It's far away from being a dynamic configuration. Can you propose a solution to solve this?*
 
+Effectivement une telle solution est loin d'etre dynamique. La solution serait d'avoir un superviseur qui serait capable d'orchestrer le scaling en fonction du nombre de requêtes.
+
 ### Tool installation
 
-Comme mentionné dans mon rapport du précédent labo, j'ai rencontré des problèmes avec Vagrant qui m'ont empêché de mettre en place le setup tel que demandé. Malheureusement le problème n'étant toujours pas résolu à ce jour je ferai à nouveau abstraction de Vagrant dans ce laboratoire et utiliserai Docker-machine directement sur ma machine hôte.
+Comme mentionné dans mon rapport du précédent labo, j'ai rencontré des problèmes avec Vagrant qui m'ont empêché de mettre en place le setup tel que demandé. Malheureusement le problème n'étant à ce jour toujours pas résolu, je ferai à nouveau abstraction de Vagrant dans ce laboratoire et utiliserai Docker-machine directement sur ma machine hôte.
 
 ### Setup de l'environnement
 
-**docker-compose.yml**
+**docker-compose.yml** : à ce stade, identique à celui du labo précédent
 
 ```yaml
 version: '3.3'
@@ -107,7 +211,7 @@ services:
         ipv4_address: 172.16.238.12
 ```
 
-
+Vérification que les instances tournent bien
 
 ```bash
 $ docker ps
@@ -118,9 +222,7 @@ CONTAINER ID        IMAGE                     COMMAND                  CREATED  
 f9ce8714cb92        softengheigvd/webapp:s2   "./run.sh"               About an hour ago   Up About an hour    3000/tcp                                                             s2
 ```
 
-
-
-
+Test d'une requête HTTP GET sur le point d'entrée **localhost**, notre proxy HTTP (HAProxy).
 
 ```bash
 $ curl -s http://localhost | jq -r
@@ -142,7 +244,9 @@ $ curl -s http://localhost | jq -r
 
 ## Task 1
 
-Updated **Dockerfile** from **webapp**
+*Replace the `TODO: [S6] Install` with the following Docker [...] Take the opportunity to change the `MAINTAINER` of the image by your [...]*
+
+Version mise à jour du fichier **Dockerfile** pour l'image **webapp** (update du MAINTAINER et ajout de la commande RUN pour l'installation de S6)
 
 ```dockerfile
 # The base image is one of the offical one
@@ -166,7 +270,7 @@ RUN curl -sSLo /tmp/s6.tar.gz https://github.com/just-containers/s6-overlay/rele
 [...]
 ```
 
-Updated **Dockerfile** from **ha**
+Mise à jour du fichier **Dockerfile** pour l'image d'**HAProxy**. Mêmes modifications que pour l'image de la webapp. (MAINTAINER et S6)
 
 ```dockerfile
 # Base image is the Official HAProxy
@@ -184,6 +288,8 @@ RUN curl -sSLo /tmp/s6.tar.gz https://github.com/just-containers/s6-overlay/rele
   
 [...]
 ```
+
+Rebuild des images pour prendre en compte les modifications
 
 Rebuild de l'image **HAProxy**
 
@@ -305,7 +411,13 @@ Successfully tagged softengheigvd/webapp:latest
 mbp-de-cyril-2:webapp cyril$
 ```
 
-Stop containers and restart them
+*To start the containers, first you need to stop the current containers and remove them. You can do that with the following commands:*
+
+```bash
+$ docker rm -f s1 s2 ha
+```
+
+*[...] restart them*
 
 ```bash
 mbp-de-cyril-2:webapp cyril$ docker run -d --name s1 softengheigvd/webapp
@@ -318,7 +430,7 @@ mbp-de-cyril-2:webapp cyril$ docker run -d -p 80:80 -p 1936:1936 -p 9999:9999 --
 65480d6e7741a17c715ce828772909d6a6d159fa81991e74c8405e8ec8099907
 ```
 
-
+*You can check the state of your containers as we already did it in previous task [...]*
 
 ```bash
 mbp-de-cyril-2:webapp cyril$ docker ps
@@ -328,9 +440,18 @@ CONTAINER ID        IMAGE                  COMMAND                  CREATED     
 910ba1ee645e        softengheigvd/webapp   "/scripts/run.sh"        3 minutes ago       Up 2 minutes        3000/tcp                                                             s1
 ```
 
+*We need to configure `S6` as our main process [...] update our Docker images HAProxy and the web application and replace the: `TODO: [S6] Replace the following instruction` by the following [...]*
 
+Version mise à jour du **Dockerfile**
 
+```dockerfile
+[...]
 
+# This will start S6 as our main process in our container
+ENTRYPOINT ["/init"]
+```
+
+*Let's start by creating a folder called `service` in `ha` and `webapp` folders.*
 
 ```bash
 mbp-de-cyril-2:noVagrant cyril$ mkdir -p ha/services/ha webapp/services/node
@@ -363,17 +484,17 @@ mbp-de-cyril-2:noVagrant cyril$ tree -L 3
         └── node
 ```
 
-
+*We need to copy the `run.sh` scripts as `run` files in the service directories. [...]*
 
 Copie des scripts dans les sous-répertoires services
 
 ```bash
-mbp-de-cyril-2:noVagrant cyril$ cp ha/scripts/run.sh ha/services/ha/run && chmod +x ha/services/ha/run
+$ cp ha/scripts/run.sh ha/services/ha/run && chmod +x ha/services/ha/run
 
-mbp-de-cyril-2:noVagrant cyril$ cp webapp/scripts/run.sh webapp/services/node/run && chmod +x webapp/services/node/run
+$ cp webapp/scripts/run.sh webapp/services/node/run && chmod +x webapp/services/node/run
 ```
 
-
+*Once copied, replace the hashbang instruction in <u>both files.</u> Replace the first line of the `run` script*
 
 Remplacement du hashbang dans les scripts **run**
 
@@ -392,9 +513,9 @@ Pour **webapp**
 [...]
 ```
 
+*In `ha` Docker file, you need to replace: `TODO: [S6] Replace the two following instructions` by*
 
-
-script run.sh mise à jour pour le container **haproxy**
+Fichier **ha/Dockerfile**, mis à jour
 
 ```bash
 [...]
@@ -416,9 +537,9 @@ RUN chmod +x /etc/services.d/ha/run
 [...]
 ```
 
+*Do the same in the `webapp`Docker file*
 
-
-script run.sh mis à jour pour le container contenant **webapp**
+Fichier **webapp/Dockerfile**, mis à jour
 
 ```bash
 [...]
@@ -436,7 +557,7 @@ RUN chmod +x /etc/services.d/node/run
 [...]
 ```
 
-
+*Build again your images and run them. [...]*
 
 Puis rebuild des deux containers
 
@@ -609,17 +730,15 @@ EXPOSE 80 1936
 [...]
 ```
 
-
-
 Enfin, rebuild des images, suppression des containers existants puis relance de ceux-ci
 
 ```bash
-mbp-de-cyril-2:webapp cyril$ docker rm -f ha s1 s2
+$ docker rm -f ha s1 s2
 ha
 s1
 s2
-mbp-de-cyril-2:webapp cyril$
-mbp-de-cyril-2:noVagrant cyril$ docker-compose up -d --build --force-recreate
+
+$ docker-compose up -d --build --force-recreate
 Creating network "novagrant_app_net" with driver "bridge"
 Creating s2 ... done
 Creating s1 ... done
@@ -630,8 +749,8 @@ CONTAINER ID        IMAGE                     COMMAND                  CREATED  
 dc49fb453c4c        novagrant_haproxy         "/docker-entrypoint.…"   5 seconds ago       Up 4 seconds        0.0.0.0:80->80/tcp, 0.0.0.0:1936->1936/tcp, 0.0.0.0:9999->9999/tcp   ha
 d66b99f8c717        softengheigvd/webapp:s2   "./run.sh"               6 seconds ago       Up 5 seconds        3000/tcp                                                             s2
 3c20b7b231d0        softengheigvd/webapp:s1   "./run.sh"               6 seconds ago       Up 5 seconds        3000/tcp                                                             s1
-mbp-de-cyril-2:noVagrant cyril$
-mbp-de-cyril-2:noVagrant cyril$ curl -s http://localhost | jq -r
+
+$ curl -s http://localhost | jq -r
 {
   "hello": "world!",
   "ip": "172.16.238.11",
@@ -640,7 +759,7 @@ mbp-de-cyril-2:noVagrant cyril$ curl -s http://localhost | jq -r
   "sessionViews": 1,
   "id": "PLXBEoeKCqQXDDTvw17vhW2hgfttZXwZ"
 }
-mbp-de-cyril-2:noVagrant cyril$ curl -s http://localhost | jq -r
+$ curl -s http://localhost | jq -r
 {
   "hello": "world!",
   "ip": "172.16.238.12",
@@ -649,7 +768,7 @@ mbp-de-cyril-2:noVagrant cyril$ curl -s http://localhost | jq -r
   "sessionViews": 1,
   "id": "tXxATPbO7z7dNN99Mr3f48fbdPFloHM_"
 }
-mbp-de-cyril-2:noVagrant cyril$ curl -s http://localhost | jq -r
+$ curl -s http://localhost | jq -r
 {
   "hello": "world!",
   "ip": "172.16.238.11",
@@ -658,7 +777,7 @@ mbp-de-cyril-2:noVagrant cyril$ curl -s http://localhost | jq -r
   "sessionViews": 1,
   "id": "smAB6RtZARs3MzTKEjYDuIgBbEWiTIG1"
 }
-mbp-de-cyril-2:noVagrant cyril$ curl -s http://localhost | jq -r
+$ curl -s http://localhost | jq -r
 {
   "hello": "world!",
   "ip": "172.16.238.12",
@@ -667,13 +786,12 @@ mbp-de-cyril-2:noVagrant cyril$ curl -s http://localhost | jq -r
   "sessionViews": 1,
   "id": "st8YK4hngjdJBFmkfnImrDiSDYE8Awu_"
 }
-mbp-de-cyril-2:noVagrant cyril$
 ```
 
 
 
 ```bash
-mbp-de-cyril-2:noVagrant cyril$ docker logs s2
+$ docker logs s2
 Application started
 HEAD / 200 16.611 ms - 119
 HEAD / 200 5.292 ms - 119
