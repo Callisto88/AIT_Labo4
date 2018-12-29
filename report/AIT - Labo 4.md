@@ -6,7 +6,7 @@
 
 An introduction describing briefly the lab
 
-
+[TODO]
 
 ## Task 0
 
@@ -411,29 +411,30 @@ Successfully tagged softengheigvd/webapp:latest
 mbp-de-cyril-2:webapp cyril$
 ```
 
-*To start the containers, first you need to stop the current containers and remove them. You can do that with the following commands:*
+Au passage, j'en profite pour modifier le script **build-images.sh** pour qu'il corresponde à mon environnement (càd sans la couche Vagrant), j'utiliserai dès lors ce script pour rebuild les images.
 
 ```bash
-$ docker rm -f s1 s2 ha
+$ diff --suppress-common-lines build-images.sh build-images-novagrant.sh
+5c5
+< cd /vagrant/ha
+---
+> cd ha
+10c10
+< cd /vagrant/webapp
+---
+> cd ../webapp
 ```
 
-*[...] restart them*
+*To start the containers, first you need to stop the current containers and remove them. You can do that with the following commands:  [...] and restart them*
 
-```bash
-mbp-de-cyril-2:webapp cyril$ docker run -d --name s1 softengheigvd/webapp
-910ba1ee645e6cbaa83d0be3a0155cd4a6c179514b2de98d5e2b648e8f88a2ae
+*[... ] or you can use the script to start two base containers*
 
-mbp-de-cyril-2:webapp cyril$ docker run -d --name s2 softengheigvd/webapp
-289f248b0aa69c5200b4ee2efcc5797c33d73be3a83a8e3691e691678b2273cb
-
-mbp-de-cyril-2:webapp cyril$ docker run -d -p 80:80 -p 1936:1936 -p 9999:9999 --link s1 --link s2 --name ha softengheigvd/ha
-65480d6e7741a17c715ce828772909d6a6d159fa81991e74c8405e8ec8099907
-```
+Dans mon cas, j'utilise la commande ```docker-compose up -d --build --force-recreate``` pour forcer le rebuild des images et relancer les containers en me basant sur les instructions du fichier docker-compose.yml exposé au début.
 
 *You can check the state of your containers as we already did it in previous task [...]*
 
 ```bash
-mbp-de-cyril-2:webapp cyril$ docker ps
+$ docker ps
 CONTAINER ID        IMAGE                  COMMAND                  CREATED             STATUS              PORTS                                                                NAMES
 65480d6e7741        softengheigvd/ha       "/docker-entrypoint.…"   2 minutes ago       Up 2 minutes        0.0.0.0:80->80/tcp, 0.0.0.0:1936->1936/tcp, 0.0.0.0:9999->9999/tcp   ha
 289f248b0aa6        softengheigvd/webapp   "/scripts/run.sh"        3 minutes ago       Up 2 minutes        3000/tcp                                                             s2
@@ -490,7 +491,6 @@ Copie des scripts dans les sous-répertoires services
 
 ```bash
 $ cp ha/scripts/run.sh ha/services/ha/run && chmod +x ha/services/ha/run
-
 $ cp webapp/scripts/run.sh webapp/services/node/run && chmod +x webapp/services/node/run
 ```
 
@@ -559,30 +559,29 @@ RUN chmod +x /etc/services.d/node/run
 
 *Build again your images and run them. [...]*
 
-Puis rebuild des deux containers
+Puis rebuild des deux containers et run
 
 ```bash
-mbp-de-cyril-2:ha cyril$ docker build -t softengheigvd/ha .
-Sending build context to Docker daemon  13.82kB
-Step 1/12 : FROM haproxy:1.5
- ---> c502bc6681e3
-```
-
-
-
-```bash
-mbp-de-cyril-2:webapp cyril$ docker build -t softengheigvd/webapp .
-Sending build context to Docker daemon  33.79kB
-Step 1/12 : FROM node:0.12.2-wheezy
+$ docker-compose up -d --build --force-recreate
+Building webapp1
+Step 1/16 : FROM node:0.12.2-wheezy
  ---> 51625719dd87
-Step 2/12 : MAINTAINER Cyril de Bourgues <cyril.debourgues@heig-vd.ch>
- ---> Using cache
- ---> cb3c6e2bd81a
+ [...]
+ 
+Successfully built f9f983588d45
+Successfully tagged novagrant_haproxy:latest
+Recreating s2 ... done
+Recreating s1 ... done
+Recreating ha ... done
 ```
 
+*Deliverables*
 
+Statistiques d'HAProxy
 
+![](assets/img/task-1-01-haproxy-stats.png)
 
+[TODO]
 
 ## Task 2
 
@@ -609,31 +608,35 @@ RUN chmod +x /etc/services.d/node/run
 [...]
 ```
 
-
-
 Puis rebuild des deux images (ha et webapp)
 
 ```bash
-mbp-de-cyril-2:noVagrant cyril$ cd ha/
-mbp-de-cyril-2:ha cyril$ docker build -t softengheigvd/ha .
-[...]
-mbp-de-cyril-2:noVagrant cyril$ cd webapp/
-mbp-de-cyril-2:ha cyril$ docker build -t softengheigvd/webapp .
-[...]
+$ ./build-images-novagrant.sh
+************************  build haproxy image  ************************
+Sending build context to Docker daemon  17.92kB
+Step 1/16 : FROM haproxy:1.5
+ ---> c502bc6681e3
+ [...]
+ 
+Successfully built 59ce481a3ea3
+Successfully tagged softengheigvd/ha:latest
+************************  build webapp image  ************************
+Sending build context to Docker daemon  37.89kB
+Step 1/16 : FROM node:0.12.2-wheezy
+ ---> 51625719dd87
+ [...]
 ```
-
-
 
 Création des répertoires serf pour la gestion des services par S6
 
 ```bash
-mbp-de-cyril-2:noVagrant cyril$ mkdir ha/services/serf webapp/services/serf
+$ mkdir ha/services/serf webapp/services/serf
 ```
 
 Nouvelle structure
 
 ```bash
-mbp-de-cyril-2:noVagrant cyril$ tree -L 3 ha/ webapp/
+$ tree -L 3 ha/ webapp/
 ha/
 ├── Dockerfile
 ├── config
@@ -674,20 +677,73 @@ webapp/
 Création des fichiers **run**
 
 ```bash
-mbp-de-cyril-2:noVagrant cyril$ touch ha/services/serf/run && chmod +x ha/services/serf/run
-
-mbp-de-cyril-2:noVagrant cyril$ touch webapp/services/serf/run && chmod +x webapp/services/serf/run
+$ touch ha/services/serf/run && chmod +x ha/services/serf/run
+$ touch webapp/services/serf/run && chmod +x webapp/services/serf/run
 ```
 
+*In the `ha/services/serf/run` file, add the following script. This will start and enable the capabilities of `Serf` on the load balancer.*
 
+Ajout du contenu du script dans le fichier **ha/services/serf/run**
 
-*Anyway, in our current solution, there is kind of misconception around the way we create the `Serf` cluster. In the deliverables, describe which problem exists with the current solution based on the previous explanations and remarks. Propose a solution to solve the issue.*
+```bash
+[...]
+
+# ##############################################################################
+# SERF START
+# ##############################################################################
+
+# We build the Serf command to run the agent
+COMMAND="/opt/bin/serf agent"
+COMMAND="$COMMAND --join ha"
+COMMAND="$COMMAND --replay"
+COMMAND="$COMMAND --event-handler member-join=/serf-handlers/member-join.sh"
+COMMAND="$COMMAND --event-handler member-leave,member-failed=/serf-handlers/member-leave.sh"
+COMMAND="$COMMAND --tag role=$ROLE"
+
+# ##############################################################################
+# SERF END
+# ##############################################################################
+
+[...]
+```
+
+*[...] Anyway, in our current solution, there is kind of misconception around the way we create the `Serf` cluster. In the deliverables, describe which problem exists with the current solution based on the previous explanations and remarks. Propose a solution to solve the issue.*
+
+[TODO]
 
 *To make sure that `ha` load balancer can leave and enter the cluster again, we add the `--replay` option. This will make the Serf agent replay the past events and then react to these events. In fact, due to the problem you have to guess, this will probably not be really useful.*
 
+[TODO]
 
 
-Copie des scripts **run** vers **/etc/services.d/** pour webapp & ha
+
+*Let's prepare the same kind of configuration. Copy the `run` file you just created in `webapp/services/serf` and replace the content between `SERF START` and `SERF END` by the following one:*
+
+Extrait du fichier **webapp/services/serf/run**, mis à jour
+
+```bash
+[...]
+
+# ##############################################################################
+# SERF START
+# ##############################################################################
+
+# We build the Serf command to run the agent
+# We build the Serf command to run the agent
+COMMAND="/opt/bin/serf agent"
+COMMAND="$COMMAND --join ha"
+COMMAND="$COMMAND --tag role=$ROLE"
+
+# ##############################################################################
+# SERF END
+# ##############################################################################
+
+[...]
+```
+
+*[...] In both Docker image files, in the [ha](ha) and [webapp](webapp) folders, replace `TODO: [Serf] Add Serf S6 setup` with the instruction to copy the Serf agent run script and to make it executable.*
+
+Dans les fichiers **webapp/Dockerfile** et **ha/Dockerfile** on ajoute les instructions nécessaires pour copier les scripts **run** vers **/etc/services.d/** dans chacun des containers (ha & webapp)
 
 ```dockerfile
 [...]
@@ -698,7 +754,7 @@ RUN chmod +x /etc/services.d/serf/run
 [...]
 ```
 
-
+*And finally, you can expose the `Serf` ports through your Docker image files.*
 
 Exposition des ports pour Serf
 
@@ -730,14 +786,11 @@ EXPOSE 80 1936
 [...]
 ```
 
-Enfin, rebuild des images, suppression des containers existants puis relance de ceux-ci
+*It's time to build the images and to run the containers*
+
+Enfin, rebuild des images existants puis exécution des containers
 
 ```bash
-$ docker rm -f ha s1 s2
-ha
-s1
-s2
-
 $ docker-compose up -d --build --force-recreate
 Creating network "novagrant_app_net" with driver "bridge"
 Creating s2 ... done
@@ -749,7 +802,13 @@ CONTAINER ID        IMAGE                     COMMAND                  CREATED  
 dc49fb453c4c        novagrant_haproxy         "/docker-entrypoint.…"   5 seconds ago       Up 4 seconds        0.0.0.0:80->80/tcp, 0.0.0.0:1936->1936/tcp, 0.0.0.0:9999->9999/tcp   ha
 d66b99f8c717        softengheigvd/webapp:s2   "./run.sh"               6 seconds ago       Up 5 seconds        3000/tcp                                                             s2
 3c20b7b231d0        softengheigvd/webapp:s1   "./run.sh"               6 seconds ago       Up 5 seconds        3000/tcp                                                             s1
+```
 
+*[...] At this stage, you should have your application running [...]*
+
+Vérification du bon fonctionnement avec des appels **curl**
+
+```bash
 $ curl -s http://localhost | jq -r
 {
   "hello": "world!",
@@ -788,22 +847,312 @@ $ curl -s http://localhost | jq -r
 }
 ```
 
+*[...] you can check the Docker logs to see what is happening [...]*
 
+Détaillons les logs du container **s2**
+
+Premières entrées des logs, démarrage des services et routines de check.  Notez le champ **RPC addr** avec pour valeur **127.0.0.1:7373**. Il s'agit bien du port exposé tel que défini dans le Dockerfile. C'est sur ce port, sur l'adresse de loopback du container que Serf va communiquer.
 
 ```bash
 $ docker logs s2
-Application started
-HEAD / 200 16.611 ms - 119
-HEAD / 200 5.292 ms - 119
-HEAD / 200 3.386 ms - 119
-HEAD / 200 2.593 ms - 119
-HEAD / 200 3.113 ms - 119
-HEAD / 200 2.959 ms - 119
+[s6-init] making user provided files available at /var/run/s6/etc...exited 0.
+[s6-init] ensuring user provided files have correct perms...exited 0.
+[fix-attrs.d] applying ownership & permissions fixes...
+[fix-attrs.d] done.
+[cont-init.d] executing container initialization scripts...
+[cont-init.d] done.
+[services.d] starting services
+[services.d] done.
+/opt/bin/serf agent --join ha --tag role=backend
+==> Starting Serf agent...
+==> Starting Serf agent RPC...
+==> Serf agent running!
+         Node name: '900b29a95f61'
+         Bind addr: '0.0.0.0:7946'
+          RPC addr: '127.0.0.1:7373'
+         Encrypted: false
+          Snapshot: false
+           Profile: lan
+==> Joining cluster...(replay: false)
+    Join completed. Synced with 1 initial agents
+    [...]
 ```
 
+Premiers événements de l'agent Serf
 
+*You will notice the following in the logs (or something similar). ```==> Joining cluster...(replay: false)
+==> lookup ha on 10.0.2.3:53: no such host```*
 
+En fait pas dans mon cas, les hôtes peuvent déjà communiquer entre eux car ayant repris mon fichier docker-compose.yml du précédent labo, la partie réseau est déjà définie :
 
+En fait pas dans mon cas ; en effet ayant repris mon fichier **docker-compose.yml**, la partie réseau est déjà en place.  Par contre je l'avais nommé différemment, donc je renomme juste le nom du réseau, initialement je l'avais nommé **app_net**, en **heig** pour coller à la donnée du labo
+
+Détails de la configuration réseau dans le fichier **docker-compose.yml**
+
+```dockerfile
+version: '3.3'
+networks:
+  heig:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+      - subnet: 172.16.238.0/24
+      [...]
+ services:
+  haproxy:     	
+    [...]
+    environment:
+      - S1_PORT_3000_TCP_ADDR=172.16.238.11
+      - S2_PORT_3000_TCP_ADDR=172.16.238.12
+    networks:
+      heig:
+        ipv4_address: 172.16.238.10
+  webapp1:
+    environment:
+      [...]
+      - SERVER_IP=172.16.238.11
+    networks:
+      heig:
+        ipv4_address: 172.16.238.11
+        [...]
+  webapp2:
+    [...]
+    environment:
+      [...]
+      - SERVER_IP=172.16.238.12
+    networks:
+      heig:
+        ipv4_address: 172.16.238.12
+```
+
+Rebuild des images pour prendre en compte le nouveau nom du réseau
+
+```bash
+$ docker-compose up -d --build --force-recreate
+Creating network "novagrant_heig" with driver "bridge"
+Building webapp1
+```
+
+Ce qui permet aux containers de déjà se causer.
+
+```
+==> Log data will now stream in as it occurs:
+
+    2018/12/29 14:08:54 [INFO] agent: Serf agent starting
+    2018/12/29 14:08:54 [INFO] serf: EventMemberJoin: 900b29a95f61 172.16.238.12
+    2018/12/29 14:08:54 [INFO] agent: joining: [ha] replay: false
+    2018/12/29 14:08:54 [INFO] serf: EventMemberJoin: eaae743dc511 172.16.238.10
+    2018/12/29 14:08:54 [INFO] serf: EventMemberJoin: aedde91bb3f1 172.16.238.11
+    2018/12/29 14:08:54 [INFO] agent: joined: 1 nodes
+Application started
+[...]
+```
+
+Revenons aux logs. Autre point intéressant dans ceux de **s2** ; les requêtes HTTP HEAD. 
+
+On voit qu'elle retourne bien un code de statut 200. Tout va bien.
+
+```bash
+[...]
+HEAD / 200 13.019 ms - 114
+HEAD / 200 5.728 ms - 114
+HEAD / 200 1.412 ms - 114
+HEAD / 200 2.487 ms - 114
+[...]
+```
+
+Mais pourquoi des requêtes HEAD ? D'où viennent elles ?
+
+**Explication** :
+
+Cela viens d'HAProxy qui test ses backends à intervalle régulier.
+
+Dans le fichier **ha/config/haproxy.cfg**, noter l'instruction **option httpchk** avec la méthode **HEAD**
+
+```bash
+[...]
+backend nodes
+	[...]
+	
+    # Define the way the backend nodes are checked to know if they are alive or down
+    # http://cbonte.github.io/haproxy-dconv/configuration-1.5.html#4-option%20httpchk
+    option httpchk HEAD /
+    
+    [...]
+```
+
+Voyons maintenant les logs dans le container **ha**
+
+Je vais détailler quelques extraits de ce log.
+
+Pour commencer :
+
+```bash
+[s6-init] making user provided files available at /var/run/s6/etc...exited 0.
+[s6-init] ensuring user provided files have correct perms...exited 0.
+[fix-attrs.d] applying ownership & permissions fixes...
+[fix-attrs.d] done.
+[cont-init.d] executing container initialization scripts...
+[cont-init.d] done.
+[services.d] starting services
+[services.d] done.
+```
+
+On peut voir qu'il y a quelques routines de check qui sont effectués : vérification puis fix des permissions, initialisation de scripts et enfin démarrage du service.
+
+*Notons le code sortie des deux premières lignes : **exited 0** qui indique que l'instruction s'est exécutée avec succès.*
+
+Autre point intéressant, l'instanciation de serf
+
+```bash
+/opt/bin/serf agent --join ha --replay --event-handler member-join=/serf-handlers/member-join.sh --event-handler member-leave,member-failed=/serf-handlers/member-leave.sh --tag role=balancer
+==> Starting Serf agent...
+==> Starting Serf agent RPC...
+==> Serf agent running!
+         Node name: '7ee4a1a1540f'
+         Bind addr: '0.0.0.0:7946'
+          RPC addr: '127.0.0.1:7373'
+         Encrypted: false
+          Snapshot: false
+           Profile: lan
+```
+
+Cela est conforme à ce que nous avions défini dans **ha/services/serf/run**
+
+```bash
+[...]
+# We build the Serf command to run the agent
+COMMAND="/opt/bin/serf agent"
+COMMAND="$COMMAND --join ha"
+COMMAND="$COMMAND --replay"
+COMMAND="$COMMAND --event-handler member-join=/serf-handlers/member-join.sh"
+COMMAND="$COMMAND --event-handler member-leave,member-failed=/serf-handlers/member-leave.sh"
+COMMAND="$COMMAND --tag role=$ROLE"
+[...]
+```
+
+Maintenant venons en à la partie qui nous intéresse, les événements. On peut déjà voir que juste après le démarrage de l'agent serf il y a déjà le membre **ha** qui se joint à serf, normal il est sur sa propre instance.
+
+```bash
+==> Joining cluster...(replay: true)
+    Join completed. Synced with 1 initial agents
+
+==> Log data will now stream in as it occurs:
+
+    2018/12/28 14:28:41 [INFO] agent: Serf agent starting
+    2018/12/28 14:28:41 [INFO] serf: EventMemberJoin: 7ee4a1a1540f 172.16.238.10
+    2018/12/28 14:28:41 [INFO] agent: joining: [ha] replay: true
+    2018/12/28 14:28:41 [INFO] agent: joined: 1 nodes
+```
+
+On remarque cependant une erreur à l'invocation du script **/serf-handlers/member-join.sh** 
+
+```bash
+    2018/12/28 14:28:42 [INFO] agent: Received event: member-join
+    2018/12/28 14:28:42 [ERR] agent: Error invoking script '/serf-handlers/member-join.sh': exit status 127
+```
+
+Normal puisque comme mentionné dans la donnée : *At the moment the `member-join` and `member-leave` scripts are missing.*
+
+Donc pas de souci.
+
+*Let's prepare the same kind of configuration. Copy the `run` file you just created in`webapp/services/serf` and replace the content between `SERF START` and `SERF END`*
+
+Extrait du fichier **webapp/services/serf/run** mis à jour :
+
+```bash
+[...]
+# ##############################################################################
+# SERF START
+# ##############################################################################
+
+# We build the Serf command to run the agent
+COMMAND="/opt/bin/serf agent"
+COMMAND="$COMMAND --join ha"
+COMMAND="$COMMAND --tag role=$ROLE"
+
+# ##############################################################################
+# SERF END
+# ##############################################################################
+[...]
+```
+
+*The `$ROLE` is also replaced by the `-e "ROLE=backend"` from the Docker `run` command.*
+
+Ci-dessous l'instruction en question, définition d'une variable d'environnement transmise dans le container au moment de son exécution
+
+```bash
+[...]
+# Define an environment variable for the role of the container
+ENV ROLE backend
+[...]
+```
+
+<u>Réf</u> : https://docs.docker.com/compose/environment-variables/
+
+And finally, you can expose the `Serf` ports through your Docker image files.*
+
+```bash
+[...]
+# Expose the ports for Serf
+EXPOSE 7946 7373
+[...]
+```
+
+( Excellent article sur la différence entre **expose** et **publish** : https://medium.freecodecamp.org/expose-vs-publish-docker-port-commands-explained-simply-434593dbc9a3 )
+
+Rebuild des images Docker pour prendre en compte les dernières modifications
+
+```bash
+$ docker-compose up -d --build --force-recreate
+```
+
+***Cleanup***
+
+*As we have changed the way we start our reverse proxy and web application, we can remove the original `run.sh` scripts.*
+
+Dans mon cas sans le **/vagrant** au début
+
+```bash
+$ rm ha/scripts/run.sh
+$ rm -r webapp/scripts/
+```
+
+A noter que dans ces fichiers run.sh on utilisait ceci :
+
+```bash
+sed -i 's/<s1>/$S1_PORT_3000_TCP_ADDR/g' /usr/local/etc/haproxy/haproxy.cfg
+sed -i 's/<s2>/$S2_PORT_3000_TCP_ADDR/g' /usr/local/etc/haproxy/haproxy.cfg
+```
+
+Les variables d'environnements **S1_PORT_3000_TCP_ADDR** et **S2_PORT_3000_TCP_ADDR** étant définies dans mon fichier **docker-compose.yml** je les retire également.
+
+```bash
+$ diff --suppress-common-lines docker-compose.yml_old docker-compose.yml
+23,25d22
+<     environment:
+<       - S1_PORT_3000_TCP_ADDR=172.16.238.11
+<       - S2_PORT_3000_TCP_ADDR=172.16.238.12
+```
+
+***Deliverables***
+
+*1. Provide the docker log output for each of the containers. [...]*
+
+```bash
+$ docker logs ha > logs/task2/ha.log
+$ docker logs s1 > logs/task2/s1.log
+$ docker logs s2 > logs/task2/s2.log
+```
+
+*2. Give the answer to the question about the existing problem with the current solution.*
+
+[TODO]
+
+*3. Give an explanation on how `Serf` is working. [...]*
+
+[TODO]
 
 ## Task 3
 

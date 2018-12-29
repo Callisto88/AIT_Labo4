@@ -1,6 +1,6 @@
 version: '3.3'
 networks:
-  app_net:
+  heig:
     driver: bridge
     ipam:
       driver: default
@@ -20,11 +20,8 @@ services:
     links:
       - webapp1
       - webapp2
-    environment:
-      - S1_PORT_3000_TCP_ADDR=172.16.238.11
-      - S2_PORT_3000_TCP_ADDR=172.16.238.12
     networks:
-      app_net:
+      heig:
         ipv4_address: 172.16.238.10
   webapp1:
     image: softengheigvd/webapp:s1
@@ -38,7 +35,7 @@ services:
       - SERVER_NAME=s1
       - SERVER_IP=172.16.238.11
     networks:
-      app_net:
+      heig:
         ipv4_address: 172.16.238.11
   webapp2:
     image: softengheigvd/webapp:s2
@@ -52,5 +49,5 @@ services:
       - SERVER_NAME=s2
       - SERVER_IP=172.16.238.12
     networks:
-      app_net:
+      heig:
         ipv4_address: 172.16.238.12
