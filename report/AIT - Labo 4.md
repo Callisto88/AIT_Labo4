@@ -934,6 +934,12 @@ Creating network "novagrant_heig" with driver "bridge"
 Building webapp1
 ```
 
+<u>NB</u> : vous remarquerez probablement que le nom effectif du réseau affiché lors du build des images et du run des containers et **novagrant_heig**. Cela vient du fait que Docker-compose préfixe tous les réseaux et service avec le nom du dossier où se trouve le fichier docker-compose.yml.
+
+Ce paramètre peut être surchargé grâce à l'option **-p**
+
+<u>Réf</u> : https://docs.docker.com/compose/reference/overview/#use--p-to-specify-a-project-name
+
 Ce qui permet aux containers de déjà se causer.
 
 ```
@@ -1154,9 +1160,173 @@ $ docker logs s2 > logs/task2/s2.log
 
 [TODO]
 
+Serf is really simple to use as it lets the user write their own shell scripts to react to the cluster events. In this task we will write the first bits and pieces of the handler scripts we need to build our solution. 
+
+We will start by just logging members that join the cluster and the members that leave the cluster. We are preparing to solve concretely the issue discovered in M4.
+
 ## Task 3
 
+*We will start by creating the scripts in [ha/scripts](ha/scripts). So create two files in [...]*
 
+Création des scripts **member-join.sh** et **member-leave.sh** (comme lors de précédentes commandes, les chemins ont été adaptés puisque je n'utilise pas Vagrant)
+
+```bash
+$ touch ha/scripts/member-join.sh && chmod +x ha/scripts/member-join.sh
+$ touch ha/scripts/member-leave.sh && chmod +x ha/scripts/member-leave.sh
+```
+
+*In the `member-join.sh` script, put the following content: [...]*
+
+*We have to update our Docker file for `ha` node. Replace the TODO: [Serf] Copy events handler scripts` with appropriate content to:*
+
+*1. Make sure there is a directory `/serf-handlers`.*
+
+*2. The `member-join` and `member-leave` scripts are placed in this folder.*
+
+*3. Both of the scripts are executable.*
+
+**ha/Dockerfile** mis à jour
+
+```dockerfile
+[...]
+
+# Copy events handler scripts
+# Define our target directory
+ARG DIRECTORY=/serf-handlers
+
+# Make sure destination directory exists, create if not
+RUN [ -d "$DIRECTORY" ] || mkdir -p $DIRECTORY
+
+# Copy our handlers scripts into that directory
+COPY scripts/ $DIRECTORY
+
+# Make them executable
+RUN chmod +x $DIRECTORY/member-*
+
+[...]
+```
+
+Rebuild des images
+
+```bash
+$ ./build-images-novagrant.sh
+
+[...]
+
+Step 15/16 : ENV ROLE backend
+ ---> Using cache
+ ---> dcf0c28184a2
+Step 16/16 : ENTRYPOINT ["/init"]
+ ---> Using cache
+ ---> b4debbbebf29
+Successfully built b4debbbebf29
+Successfully tagged softengheigvd/webapp:latest
+```
+
+Vérification dans le container **ha**
+
+```bash
+$ docker exec -it ha /bin/bash
+root@2c03df9e55b0:/# ls
+bin  boot  dev	docker-entrypoint.sh  etc  home  init  lib  lib64  libexec  media  mnt	opt  proc  root  run  sbin  serf-handlers  srv	sys  tmp  usr  var
+root@2c03df9e55b0:/# cd serf-handlers/
+root@2c03df9e55b0:/serf-handlers# ls -alh
+total 16K
+drwxr-xr-x 1 root root 4.0K Jan  4 14:56 .
+drwxr-xr-x 1 root root 4.0K Jan  4 14:56 ..
+-rwxr-xr-x 1 root root  393 Jan  4 14:44 member-join.sh
+-rwxr-xr-x 1 root root  406 Jan  4 14:45 member-leave.sh
+```
+
+Tout semble en ordre.
+
+*Run the `ha` container first and capture the logs with `docker logs` (**keep the logs**).*
+
+Je contrôle le nom du réseau bridge
+
+```bash
+$ docker network ls | grep heig
+f9c839c64202        novagrant_heig 				bridge              local
+[...]
+```
+
+Run du container **ha** en premier
+
+```bash
+$ docker run -d -p 80:80 -p 1936:1936 -p 9999:9999 --network novagrant_heig --ip 172.16.238.10 --name ha softengheigvd/ha
+61b45770cc6d9e8cd51c0fffd740340ad4ef7c24a90aed8f1a4fc891b8f35ebf
+```
+
+Capture des logs pour **ha**
+
+```bash
+$ docker logs ha > logs/task3/ha.log
+```
+
+*Now, run one of the two backend containers and capture the logs (**keep the logs**). [...]*
+
+```bash
+$ docker run -d --network novagrant_heig --ip 172.16.238.11 --name s1 softengheigvd/webapp
+f59b6b50f0c14fc5bd3c614a3bf6329d5f09bcca52d26bcf7db29cb8c4c3fe4e
+$ docker logs s1 > logs/task3/s1.log
+```
+
+*Shortly after starting the container capture also the logs of the `ha` node (**keep the logs**).*
+
+```bash
+$ docker run -d --network novagrant_heig --ip 172.16.238.12 --name s2 softengheigvd/webapp
+bd343c4beda0b2b71181397d4a703ed35bdb51570023109e44343d2d1fe1a928
+$ docker logs s2 > logs/task3/s2.log
+```
+
+````bash
+$ docker logs ha >> logs/task3/ha.log
+````
+
+*To check there is something happening on the node `ha` you will need to connect*
+
+```bash
+$ docker exec -it ha /bin/bash
+root@61b45770cc6d:/# cat /var/log/serf.log
+Member join script triggered
+Member join event received from: 61b45770cc6d with role balancer
+Member join script triggered
+Member join event received from: f59b6b50f0c1 with role backend
+Member join script triggered
+Member join event received from: bd343c4beda0 with role backend
+```
+
+*Once you have finished, you have simply to type `exit` in the container to quit [...]*
+
+```bash
+root@61b45770cc6d:/# exit
+exit
+$
+```
+
+*Deliverables*
+
+*1. Provide the docker log output for each of the containers:  `ha`, `s1` and `s2`. Put your logs in the `logs` directory you created in the previous task.*
+
+```bash
+$ tree -L 2 logs/
+logs/
+├── task1
+├── task2
+│   ├── ha.log
+│   ├── s1.log
+│   └── s2.log
+└── task3
+    ├── ha.log
+    ├── s1.log
+    └── s2.log
+```
+
+*2. Provide the logs from the `ha` container gathered directly from the `/var/log/serf.log` file present in the container. Put the logs in the `logs` directory in your repo.*
+
+```bash
+$ docker exec -it ha cat /var/log/serf.log > logs/task3/ha-serf.log
+```
 
 ## Task 4
 
