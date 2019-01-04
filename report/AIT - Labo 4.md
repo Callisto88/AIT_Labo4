@@ -1328,6 +1328,22 @@ logs/
 $ docker exec -it ha cat /var/log/serf.log > logs/task3/ha-serf.log
 ```
 
+```bash
+$ git add .
+$ git commit -m "Task 3 done"
+[master 1c201f7] Task 3 done
+ 8 files changed, 337 insertions(+), 1 deletion(-)
+ create mode 100755 ha/scripts/member-join.sh
+ create mode 100755 ha/scripts/member-leave.sh
+ create mode 100644 logs/task3/ha-serf.log
+ create mode 100644 logs/task3/ha.log
+ create mode 100644 logs/task3/s1.log
+ create mode 100644 logs/task3/s2.log
+$ git push origin master
+
+[...]
+```
+
 ## Task 4
 
 
