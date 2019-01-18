@@ -6,7 +6,7 @@
 
 An introduction describing briefly the lab
 
-[TODO]
+Play with Docker =)
 
 ## Task 0
 
@@ -14,7 +14,7 @@ An introduction describing briefly the lab
 
 *1. Do you think we can use the current solution for a production environment? What are the main problems when deploying it in a production environment?*
 
-La structure du labo précédent ne convient pas à une utilisation en production. En effet, la solution mise en place au labo 3 est beaucoup trop statique et implique trop de downtime en cas de modifications pour être utilisé en production.
+La structure du labo précédent ne convient pas à une utilisation en production. En effet, la solution mise en place au labo 3 est beaucoup trop statique et implique trop de downtime en cas de modifications pour être utilisé en production. En clair, à chaque fois qu'on souhaite rajouter en retirer un node il faut éteindre les instances, reconfigurer la stack Docker, rebuild et enfin relancer le tout. Pas très pratique en somme.
 
 *2. Describe what you need to do to add new`webapp` container to the infrastructure. Give the exact steps of what you have to do without modifiying the way the things are done. Hint: You probably have to modify some configuration and script files in a Docker image.*
 
@@ -124,21 +124,35 @@ Cette configuration va offrir un tout petit plus de souplesse dans le sens où i
 
 *3. Based on your previous answers, you have detected some issues in the current solution. Now propose a better approach at a high level.*
 
-Je propose d'utiliser Docker Swarm. Conformément à la documentation cette solution semble toute désignée pour addresser les problèmes évoqués dans les questions 1 et 2. 
+Je propose d'utiliser Docker Swarm. Conformément à la documentation cette solution semble toute désignée pour addresser les problèmes évoqués dans les questions 1 et 2 et offrir une meilleure scability et plus de dynamisme.
 
-https://docs.docker.com/engine/swarm/
+<u>Réf</u> : https://docs.docker.com/engine/swarm/
 
 *4. You probably noticed that the list of web application nodes is hardcoded in the load balancer configuration. How can we manage the web app nodes in a more dynamic fashion?*
 
-On pourrait utiliser un template.
+On pourrait utiliser un template à l'intérieur du quel les valeurs telles que les noms des nodes seraient remplacés à la volée sur la base d'un ou plusieurs "triggers" en cas d'ajout ou de retrait d'un node backend, puis poussé automatiquement dans la configuration d'HAProxy avec reload à la clé pour prendre en compte les modifications.
 
-*5. Do you think our current solution is able to run additional management processes beside the main web server / load balancer process in a container? If no, what is missing / required to reach the goal? If yes, how to proceed to run for example a log forwarding process?*
+*5. [...] Do you think our current solution is able to run additional management processes beside the main web server / load balancer process in a container? If no, what is missing / required to reach the goal? If yes, how to proceed to run for example a log forwarding process?*
 
-Les containers tels que définis actuellement ne sont pas designés pour exécuter d'autres processus en parallèle.
+Docker est designé pour n'exécuter qu'un seul processus à la fois. Pour outre-passer cette limite on pourrait utiliser supervisor.
+
+Exemple directement tiré de https://docs.docker.com/config/containers/multi-service_container/
+
+```dockerfile
+FROM ubuntu:latest
+RUN apt-get update && apt-get install -y supervisor
+RUN mkdir -p /var/log/supervisor
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY my_first_process my_first_process
+COPY my_second_process my_second_process
+CMD ["/usr/bin/supervisord"]
+```
+
+<u>Réf</u> : https://docs.docker.com/config/containers/multi-service_container/
 
 *6. What happens if we add more web server nodes? Do you think it is really dynamic? It's far away from being a dynamic configuration. Can you propose a solution to solve this?*
 
-Effectivement une telle solution est loin d'etre dynamique. La solution serait d'avoir un superviseur qui serait capable d'orchestrer le scaling en fonction du nombre de requêtes.
+Effectivement une telle solution est loin d'etre dynamique. La solution serait d'avoir un superviseur qui serait capable d'orchestrer le scaling en fonction du nombre de requêtes ou du moins de régénérer la configuration à la volée en cas d'ajout / suppression de node backend.
 
 ### Tool installation
 
@@ -211,6 +225,12 @@ services:
         ipv4_address: 172.16.238.12
 ```
 
+Pour compiler et lancer mes containers j'utiliserai régulièrement la commande suivante.
+
+```bash
+$ docker-compose up -d --build --force-recreate
+```
+
 Vérification que les instances tournent bien
 
 ```bash
@@ -222,7 +242,7 @@ CONTAINER ID        IMAGE                     COMMAND                  CREATED  
 f9ce8714cb92        softengheigvd/webapp:s2   "./run.sh"               About an hour ago   Up About an hour    3000/tcp                                                             s2
 ```
 
-Test d'une requête HTTP GET sur le point d'entrée **localhost**, notre proxy HTTP (HAProxy).
+Test d'une requête HTTP GET sur le point d'entrée **localhost**, notre reverse proxy HTTP (HAProxy).
 
 ```bash
 $ curl -s http://localhost | jq -r
@@ -238,9 +258,11 @@ $ curl -s http://localhost | jq -r
 
 ![](assets/img/task-0-01-http-get-localhost.png)
 
-![](assets/img/task-0-02-haproxy-stats-page.png)
+**Deliverables**
 
-**URL du repo** : https://github.com/Callisto88/AIT_Labo4
+1. ![](assets/img/task-0-02-haproxy-stats-page.png)
+
+2. **URL du repo** : https://github.com/Callisto88/AIT_Labo4
 
 ## Task 1
 
@@ -575,15 +597,20 @@ Recreating s1 ... done
 Recreating ha ... done
 ```
 
-*Deliverables*
+**Deliverables**
 
-Statistiques d'HAProxy
+1. Statistiques d'HAProxy
+   ![](assets/img/task-1-01-haproxy-stats.png)
 
-![](assets/img/task-1-01-haproxy-stats.png)
+2. *Describe your difficulties for this task and your understanding of what is happening during this task. Explain in your own words why are we installing a process supervisor. Do not hesitate to do more research and to find more articles on that topic to illustrate the problem.*
 
-[TODO]
+   A ce stade une des difficultés réside dans la confrontation au design de Docker. En effet, Docker étant pensé pour n'exécuter qu'un seul processus par container (ce qui dans un sens fait toute la beauté de la solution). Dans notre cas malheureusement on se heurte au fait qu'on souhaite avoir plusieurs processus par container.
+
+   Ainsi l'installation d'un supervisor apporte une solution à cela en permettant l'exécution de plusieurs processus dans un même container.
 
 ## Task 2
+
+*[...] To install `Serf` we have to add the following Docker instruction in the `ha` and `webapp` Docker files. Replace the line `TODO: [Serf] Install` in [ha/Dockerfile](ha/Dockerfile#L13) and [webapp/Dockerfile](webapp/Dockerfile#L18) with the following [...]*
 
 Ajout des instructions d'installation dans les Dockerfile d'HAProxy et webapp
 
@@ -626,6 +653,8 @@ Step 1/16 : FROM node:0.12.2-wheezy
  ---> 51625719dd87
  [...]
 ```
+
+*[...] To start `Serf`, we need to create the proper service for `S6`. Let's do that with the creation of the service folder in `ha/services` and [...]*
 
 Création des répertoires serf pour la gestion des services par S6
 
@@ -707,15 +736,7 @@ COMMAND="$COMMAND --tag role=$ROLE"
 [...]
 ```
 
-*[...] Anyway, in our current solution, there is kind of misconception around the way we create the `Serf` cluster. In the deliverables, describe which problem exists with the current solution based on the previous explanations and remarks. Propose a solution to solve the issue.*
-
-[TODO]
-
 *To make sure that `ha` load balancer can leave and enter the cluster again, we add the `--replay` option. This will make the Serf agent replay the past events and then react to these events. In fact, due to the problem you have to guess, this will probably not be really useful.*
-
-[TODO]
-
-
 
 *Let's prepare the same kind of configuration. Copy the `run` file you just created in `webapp/services/serf` and replace the content between `SERF START` and `SERF END` by the following one:*
 
@@ -1142,7 +1163,7 @@ $ diff --suppress-common-lines docker-compose.yml_old docker-compose.yml
 <       - S2_PORT_3000_TCP_ADDR=172.16.238.12
 ```
 
-***Deliverables***
+**Deliverables**
 
 *1. Provide the docker log output for each of the containers. [...]*
 
@@ -1154,15 +1175,11 @@ $ docker logs s2 > logs/task2/s2.log
 
 *2. Give the answer to the question about the existing problem with the current solution.*
 
-[TODO]
+Le principale problème avec la solution "courante" est qu'HAProxy doit impérativement être démarré en premier. Dans le cas où les backend nodes sont démarrés en premier alors Serf générera des erreurs et ne parviendra malheureusement pas à retomber sur ses pattes car le processus Serf ne trouvera pas le node **ha**, même après coup.
 
 *3. Give an explanation on how `Serf` is working. [...]*
 
-[TODO]
-
-Serf is really simple to use as it lets the user write their own shell scripts to react to the cluster events. In this task we will write the first bits and pieces of the handler scripts we need to build our solution. 
-
-We will start by just logging members that join the cluster and the members that leave the cluster. We are preparing to solve concretely the issue discovered in M4.
+En des termes simples, Serf est un orchestrateur qui utilise un protocole gossip ("épidémique") pour propager des informations à tous les membres d'un même cluster.
 
 ## Task 3
 
@@ -1304,7 +1321,7 @@ exit
 $
 ```
 
-*Deliverables*
+**Deliverables**
 
 *1. Provide the docker log output for each of the containers:  `ha`, `s1` and `s2`. Put your logs in the `logs` directory you created in the previous task.*
 
@@ -1346,15 +1363,517 @@ $ git push origin master
 
 ## Task 4
 
+*To install `NodeJS`, just replace `TODO: [HB] Install NodeJS` by the following content: [...]*
 
+*[...] So we need to add `xz-utils` to the `apt-get install` present above the line `TODO: [HB] Update to*
+
+*It's time to install `Handlebars` and a small command line tool handlebars-cmd` to make it work properly. For that replace the `TODO: [HB] Install Handlebars and cli` by this Docker instruction:*
+
+Version mise à jour de **ha/Dockerfile**
+
+```dockerfile
+[...]
+
+# Install some tools
+RUN apt-get update && apt-get -y install wget curl vim rsyslog xz-utils
+
+[...]
+
+# Install NodeJS
+RUN curl -sSLo /tmp/node.tar.xz https://nodejs.org/dist/v4.4.4/node-v4.4.4-linux-x64.tar.xz \
+  && tar -C /usr/local --strip-components 1 -xf /tmp/node.tar.xz \
+  && rm -f /tmp/node.tar.xz
+
+# Install the handlebars-cmd node module and its dependencies
+RUN npm install -g handlebars-cmd
+
+[...]
+```
+
+*Now we will update the handler scripts to use `Handlebars`. [...]* 
+
+Création du template **haproxy.cfg.hb**
+
+```bash
+$ echo "Container {{ name }} has joined the Serf cluster with the following IP address: {{ ip }}" >> ha/config/haproxy.cfg.hb
+```
+
+```bash
+$ cat ha/config/haproxy.cfg.hb
+Container {{ name }} has joined the Serf cluster with the following IP address: {{ ip }}
+```
+
+*Let's replace `TODO: [HB] Copy the haproxy configuration template` in [ha/Dockerfile](ha/Dockerfile#L32) with the required stuff to: [...]*
+
+Mise à jour du fichier **ha/Dockerfile**
+
+```dockerfile
+# Define our target directory
+ARG DIRECTORY=/config
+
+# Make sure destination directory exists, create if not
+RUN [ -d "$DIRECTORY" ] || mkdir -p $DIRECTORY
+
+# Copy our handlers scripts into that directory
+COPY config/haproxy.cfg.hb $DIRECTORY
+```
+
+*Then, update the `member-join.sh` script in [ha/scripts](ha/scripts) with the following content:*
+
+Mise à jour du script **ha/scripts/member-join.sh** selon donnée
+
+```bash
+#!/usr/bin/env bash
+
+echo "Member join script triggered" >> /var/log/serf.log
+
+# We iterate over stdin
+while read -a values; do
+  # We extract the hostname, the ip, the role of each line and the tags
+  HOSTNAME=${values[0]}
+  HOSTIP=${values[1]}
+  HOSTROLE=${values[2]}
+  HOSTTAGS=${values[3]}
+
+  echo "Member join event received from: $HOSTNAME with role $HOSTROLE" >> /var/log/serf.log
+
+  # Generate the output file based on the template with the parameters as input for placeholders
+  handlebars --name $HOSTNAME --ip $HOSTIP < /config/haproxy.cfg.hb > /tmp/haproxy.cfg
+done
+```
+
+*Time to build our `ha` image and run it. We will also run `s1` and `s2`. As usual, here are the commands to build and run our image and containers:*
+
+```bash
+$ docker rm -f ha s1 s2
+ha
+s1
+s2
+```
+
+```bash
+$ ./build-images-novagrant.sh
+************************  build haproxy image  ************************
+Sending build context to Docker daemon  28.16kB
+Step 1/22 : FROM haproxy:1.5
+ ---> c502bc6681e3
+Step 2/22 : MAINTAINER Cyril de Bourgues <cyril.debourgues@heig-vd.ch>
+ ---> Using cache
+ ---> b83396efab1d
+Step 3/22 : RUN apt-get update && apt-get -y install wget curl vim rsyslog xz-utils
+ ---> Running in a8f934367571
+Get:1 http://security-cdn.debian.org/debian-security stretch/updates InRelease [94.3 kB]
+
+[...]
+```
+
+Run
+
+```bash
+$ docker run -d -p 80:80 -p 1936:1936 -p 9999:9999 --network novagrant_heig --ip 172.16.238.10 --name ha softengheigvd/ha
+9b2cf6ec636147607adb0b2e6e0f563b358093d970402bc5b58d6f9ee9aabf40
+```
+
+*Take the time to retrieve the output file in the `ha` container. Connect to the container:*
+
+```bash
+$ docker exec -ti ha cat /tmp/haproxy.cfg
+Container c8eae0ccb0b7 has joined the Serf cluster with the following IP address: 172.16.238.10
+```
+
+Envoi de l'output vers **logs/task4/haproxy.cfg**
+
+```
+$ docker exec -ti ha cat /tmp/haproxy.cfg >logs/task4/haproxy.cfg
+```
+
+*[...] it is time to do an end-to-end test. Start the `s1` container, wait a bit, then retrieve the `haproxy.cfg` file from the `ha` container to see whether it saw `s1` coming up. Then do the same for `s2`:*
+
+Run de **s1**
+
+```bash
+$ docker run -d --network novagrant_heig --ip 172.16.238.11 --name s1 softengheigvd/webapp
+e7034dd4a66bfbe8809b2708bde03525c36d32e31d92accb9dd5b72653c1b903
+```
+
+Output du fichier **/tmp/haproxy.cfg** dans le container **ha**
+
+```bash
+$ docker exec -it ha cat /tmp/haproxy.cfg
+Container e7034dd4a66b has joined the Serf cluster with the following IP address: 172.16.238.11
+```
+
+Run de **s2**
+
+```bash
+$ docker run -d --network novagrant_heig --ip 172.16.238.12 --name s2 softengheigvd/webapp
+40a2a907786ca96c83bb3dd2fe0bcb5dfb16964538b4e912477b67e16187191f
+```
+
+Output du fichier **/tmp/haproxy.cfg** dans le container **ha**
+
+```bash
+$ docker exec -it ha cat /tmp/haproxy.cfg
+Container 40a2a907786c has joined the Serf cluster with the following IP address: 172.16.238.12
+```
+
+La seconde d'après
+
+```bash
+$ docker exec -it ha cat /tmp/haproxy.cfg
+Container 40a2a907786c has joined the Serf cluster with the following IP address: 172.16.238.11
+```
+
+**Attention** : à ce point, il semble qu'il y ait un souci, en effet, le fichier **/tmp/haproxy.cfg** ne contient qu'une seule ligne qui est écrasée lorsque le script **member-join.sh** est appelé. Or il semble que l'idée soit d'avoir l'ensemble des nodes dans ce fichier justement en vue du de réecrire le fichier de configuration **/usr/local/etc/haproxy/haproxy.cfg**
+
+En revérifiant le script **member-join.sh** on s'aperçoit que dans la donnée il est indiqué ceci :
+
+```bash
+  # Generate the output file based on the template with the parameters as input for placeholders
+  handlebars --name $HOSTNAME --ip $HOSTIP < /config/haproxy.cfg.hb > /tmp/haproxy.cfg
+done
+  																	^
+  																	|
+```
+
+Notez la redirection de flux **>** ! Devrait plutôt être **>>** pour appondre le contenu à la suite dans le fichier **/tmp/haproxy.cfg** et non l'écraser à chaque fois, non ?
+
+Dans le doute, voyons le comportement si on "appond" les lignes au lieu de remplacer le contenu à chaque fois.
+
+En corrigeant le script, puis en rebuild les images + re-run les containers
+
+```
+$ docker-compose -up -d --build --force-recreate
+$ docker exec -it ha /bin/bash
+root@e035cb13547b:/# cat /tmp/haproxy.cfg
+Container e035cb13547b has joined the Serf cluster with the following IP address: 172.16.238.10
+Container 23c0014bfab3 has joined the Serf cluster with the following IP address: 172.16.238.11
+Container ff4642ac9587 has joined the Serf cluster with the following IP address: 172.16.238.12
+```
+
+On s'aperçoit que cette fois on a tout le monde =). 
+Je répète les étapes précédentes pour avoir les bons logs.
+
+```bash
+$ docker rm -f ha s1 s2
+ha
+s1
+s2
+```
+
+```bash
+$ ./build-images-novagrant.sh
+************************  build haproxy image  ************************
+Sending build context to Docker daemon  28.16kB
+Step 1/22 : FROM haproxy:1.5
+ ---> c502bc6681e3
+Step 2/22 : MAINTAINER Cyril de Bourgues <cyril.debourgues@heig-vd.ch>
+ ---> Using cache
+ ---> b83396efab1d
+Step 3/22 : RUN apt-get update && apt-get -y install wget curl vim rsyslog xz-utils
+ ---> Running in a8f934367571
+Get:1 http://security-cdn.debian.org/debian-security stretch/updates InRelease [94.3 kB]
+
+[...]
+```
+
+Run de **ha** + copie du log **/tmp/haproxy.cfg** vers **logs/task4/haproxy.cfg**
+
+```bash
+$ docker run -d -p 80:80 -p 1936:1936 -p 9999:9999 --network novagrant_heig --ip 172.16.238.10 --name ha softengheigvd/ha
+9b2cf6ec636147607adb0b2e6e0f563b358093d970402bc5b58d6f9ee9aabf40
+
+$ docker exec -ti ha cat /tmp/haproxy.cfg
+Container c8eae0ccb0b7 has joined the Serf cluster with the following IP address: 172.16.238.10
+
+$ docker exec -ti ha cat /tmp/haproxy.cfg >logs/task4/haproxy.cfg
+```
+
+Run de **s1** + copie du fichier de log **/tmp/haproxy.cfg** du container **ha** dans **logs/task4**
+
+```bash
+$ docker run -d --network novagrant_heig --ip 172.16.238.11 --name s1 softengheigvd/webapp
+e7034dd4a66bfbe8809b2708bde03525c36d32e31d92accb9dd5b72653c1b903
+
+$ docker exec -it ha cat /tmp/haproxy.cfg
+Container 256ba8dc3545 has joined the Serf cluster with the following IP address: 172.16.238.10
+Container 88e39b16a313 has joined the Serf cluster with the following IP address: 172.16.238.11
+
+$ docker exec -ti ha cat /tmp/haproxy.cfg >logs/task4/haproxy.cfg-after-s1-run
+```
+
+Run de **s2** + copie du fichier de log **/tmp/haproxy.cfg** du container **ha** dans **logs/task**
+
+```bash
+$ docker run -d --network novagrant_heig --ip 172.16.238.12 --name s2 softengheigvd/webapp
+40a2a907786ca96c83bb3dd2fe0bcb5dfb16964538b4e912477b67e16187191f
+
+$ docker exec -ti ha cat /tmp/haproxy.cfg
+Container 256ba8dc3545 has joined the Serf cluster with the following IP address: 172.16.238.10
+Container 88e39b16a313 has joined the Serf cluster with the following IP address: 172.16.238.11
+Container 7f26182f2bb4 has joined the Serf cluster with the following IP address: 172.16.238.12
+
+$ docker exec -ti ha cat /tmp/haproxy.cfg >logs/task4/haproxy.cfg-after-s2-run
+
+```
+
+Voilà !
+
+Bon dans un cas comme dans l'autre ça n'est pas optimal ! 
+Pourquoi ?
+
+Dans le premier scénario (celui on écrase le contenu du fichier **/tmp/haproxy.cfg**) à chaque fois que **member-join.sh** est déclenché on le problème suivant : s'il y a deux backends qui trigger l'ajout d'un nouveau membre alors seul un des deux sera pris en compte (celui qui aura provoqué la dernière écriture dans **/tmp/haproxy.cfg**)
+
+Dans le second scénario, on n'écrase plus le fichier, on a par conséquent les différents nodes peut importe leurs ordre d'arrivée, par contre, on stocke les entrées à double, par exemple si un backend quitte le cluster et qu'il y revient on aura des lignes à double et potentiellement un comportement ératique voire une configuration d'HAProxy bancale.
+
+Illustration du problème :
+
+```bash
+Container a0ccba2e8f1c has joined the Serf cluster with the following IP address: 172.16.238.11
+Container 30670468b1ad has joined the Serf cluster with the following IP address: 172.16.238.10
+Container ae881cd20c39 has joined the Serf cluster with the following IP address: 172.16.238.12
+Container a0ccba2e8f1c has joined the Serf cluster with the following IP address: 172.16.238.11
+```
+
+**Deliverables**
+
+*1. (About the RUN instruction) Tell us about the pros and cons to merge as much as possible of the command. In other words, compare [...]*
+
+L'approche multilignes (un RUN par ligne) à l'avantage d'exécuter chaque ligne indépendamment du fait qu'un ou plusieurs packages aient pu échoué.
+
+Typiquement avec l'approche ```  RUN command 1 && command 2 && command 3```, si la première commande échoue, alors les commandes suivantes ne seront tout simplement pas exécutées.
+
+Par contre, le RUN avec plusieurs commandes à la suite séparées par des **&&** permettent d'optimiser le traitement du Dockerfile
+
+*2. Propose a different approach to architecture our images to be able to reuse as much as possible what we have done. Your proposition should also try to avoid as much as possible repetitions between your images.*
+
+Nous pourrions, par exemple, créer notre propre image sur la base des instructions que nous avons rajouté au fur et à mesure du laboratoire.
+
+Cela permettrait, dans une future implémentation, d'utiliser Docker Swarm pour déployer dynamiquement des instances contenant déjà tous le nécessaire pour s'intégrer à notre approche (serf / haproxy / s6)
+
+*3. Provide the `/tmp/haproxy.cfg` file generated in the `ha` container after each step.  Place the output into the `logs` folder like you already did for the Docker logs in the previous tasks. Three files are expected.*
+
+*In addition, provide a log file containing the output of the `docker ps` console and another file (per container) with docker inspect <container>`. Four files are expected.*
+
+Les fichiers se trouvent dans **logs/task4/**
+
+*NB : vous trouverez les fichiers haproxy.cfg pour les deux scénarios.*
+
+*4. Based on the three output files you have collected, what can you say about the way we generate it? What is the problem if any?*
+
+Le problème avec cette solution, du moins à ce stade, est qu'on ne gère pas l'événement en cas de retrait d'un des nodes. Le script **member-leave.sh** devrait prendre en compte ce cas pour retirer du fichier **/tmp/haproxy.cfg** le ou les nodes qui disparaissent.
+
+*\+ Voir explication précédente sur les deux scénarios*
 
 ## Task 5
 
+*[...] Now, we need to refine our `join` and `leave` scripts to generate a proper HAProxy configuration file.*
 
+*First, we will copy/paste the content of the [ha/config/haproxy.cfg](ha/config/haproxy.cfg) file into the template [ha/config/haproxy.cfg.hb](ha/config/haproxy.cfg.hb). You can simply run the following command: [...]*
+
+Copie du fichier de configuration **haproxy.cfg** dans **haproxy.cfg.hb**
+
+```bash
+cp ha/config/haproxy.cfg ha/config/haproxy.cfg.hb
+```
+
+*[...] Then we will replace the content between `# HANDLEBARS START` and`# HANDLEBARS STOP` by the following content:*
+
+Version mise à jour du template **ha/config/haproxy.cfg.hb**
+
+```java
+[...]
+
+    # Define the list of nodes to be in the balancing mechanism
+    # http://cbonte.github.io/haproxy-dconv/configuration-1.5.html#4-server
+    # HANDLEBARS START
+    {{#each addresses}}
+    server {{ host }} {{ ip }}:3000 check
+    {{/each}}
+    # HANDLEBARS END
+
+[...]
+```
+
+*[...] Our configuration template is ready. Let's update the `member-join.sh` script to generate the correct configuration. [...]*
+
+*[...] In the file [ha/scripts/member-join.sh](ha/scripts/member-join.sh) replace the whole content by the following one [...]*
+
+Mise à jour du fichier **ha/scripts/member-join.sh** (contenu identique à celui fourni dans la donnée donc pas montré ici). Pareil pour **ha/scripts/member-leave.sh**
+
+*[...] In the main configuration file that is used for bootstrapping HAProxy the first time when there are no backend nodes, we have the list of servers that we used in the first task and the previous lab. We can remove the list. So find `TODO: [CFG] Remove all the servers` and remove the list of nodes. [...]*
+
+Fichier **ha/config/haproxy.cfg** mis à jour
+
+```bash
+[...]
+    # Define the list of nodes to be in the balancing mechanism
+    # http://cbonte.github.io/haproxy-dconv/configuration-1.5.html#4-server
+    # HANDLEBARS START
+    # HANDLEBARS END
+```
+
+*[...] In [ha/services/ha/run](ha/services/ha/run), we can remove the two lines above `TODO: [CFG] Remove the following two lines`.*
+
+Fichier **run** mis à jour
+
+```bash
+#!/usr/bin/with-contenv bash
+rsyslogd -c5 2>/dev/null
+
+# TODO: [CFG] Replace this command
+haproxy -f /usr/local/etc/haproxy/haproxy.cfg -p /var/run/haproxy.pid
+```
+
+*[...] We need to make sure the image has the folder `/nodes` created. In the Docker file, replace the `TODO: [CFG] Create the nodes folder` by the correct instruction to create the `/nodes` folder.*
+
+Fichier **ha/Dockerfile**
+
+```dockerfile
+[...]
+
+# Define our target directory
+ARG DIRECTORY=/nodes
+
+# Make sure destination directory exists, create if not
+RUN [ -d "$DIRECTORY" ] || mkdir -p $DIRECTORY
+
+[...]
+```
+
+Rebuild des images pour prendre en compte les dernières modifications
+
+```bash
+$ ./build-images-novagrant.sh
+************************  build haproxy image  ************************
+Sending build context to Docker daemon  48.13kB
+
+[...]
+```
+
+Déroulement des 3 étapes (démarrage de ha, observation, puis démarrage de s1, observation, enfin démarrage de s2 et observation)
+
+**Etape 1** : démarrage de HAproxy standalone
+
+```bash
+$ mkdir -p logs/task5
+
+$ docker run -d -p 80:80 -p 1936:1936 -p 9999:9999 --network novagrant_heig --ip 172.16.238.10 --name ha softengheigvd/ha
+14e22bad48dd6b905c399c25c35f04e7f1cfee72385642f9e5656aa11d48028e
+
+$ docker exec -ti ha cat /usr/local/etc/haproxy/haproxy.cfg > logs/task5/haproxy.cfg-step1
+```
+
+Aperçu de la configuration Haproxy
+
+```bash
+    # HANDLEBARS START
+    # HANDLEBARS END
+```
+
+**Etape 2** : démarrage de s1
+
+```bash
+$ docker run -d --network novagrant_heig --ip 172.16.238.11 --name s1 softengheigvd/webapp
+57c88e87aa60503ad517672b151a63201342ab7d31f841864e706ff4d249955e
+
+$ docker exec -ti ha cat /usr/local/etc/haproxy/haproxy.cfg > logs/task5/haproxy.cfg-step2
+```
+
+Aperçu de la configuration
+
+```bash
+    # HANDLEBARS START
+    
+    server 57c88e87aa60 172.16.238.11:3000 check
+    
+    # HANDLEBARS END
+```
+
+**Etape 3** : démarrage de s2
+
+```bash
+$ docker run -d --network novagrant_heig --ip 172.16.238.12 --name s2 softengheigvd/webapp
+7d564ccfd2d3324efbfee23c4ee54936784c0093979e1c394b6e254771b6662e
+
+$ docker exec -ti ha cat /usr/local/etc/haproxy/haproxy.cfg > logs/task5/haproxy.cfg-step3
+```
+
+Aperçu de la configuration
+
+```bash
+    # HANDLEBARS START
+
+    server 57c88e87aa60 172.16.238.11:3000 check
+
+    server 7d564ccfd2d3 172.16.238.12:3000 check
+
+    # HANDLEBARS END
+```
+
+On voit que tout semble fonctionner, la configuration HAProxy est correctement mise à jour selon ce que nous avons décrit comme comportement.
+
+**Deliverables**
+
+*1. Provide the file `/usr/local/etc/haproxy/haproxy.cfg` generated in the `ha` container after each step. Three files are expected.*
+
+Les fichiers en question sont dans **logs/task5/**
+
+*2. Provide the list of files from the `/nodes` folder inside the `ha` container. One file expected with the command output.*
+
+```bash
+$ docker exec -ti ha ls -lah /nodes > logs/task5/nodes-directory-content
+```
+
+*3. Provide the configuration file after you stopped one container and the list of nodes present in the `/nodes` folder. One file expected with the command output. Two files are expected.*
+
+```bash
+$ docker stop s1
+s1
+
+$ docker exec -ti ha ls -lah /nodes
+total 12K
+drwxr-xr-x 1 root root 4.0K Jan 16 06:10 .
+drwxr-xr-x 1 root root 4.0K Jan 16 05:57 ..
+-rw-r--r-- 1 root root   27 Jan 16 06:01 7d564ccfd2d3
+
+$ docker exec -ti ha tail -n 10 /usr/local/etc/haproxy/haproxy.cfg
+    # http://cbonte.github.io/haproxy-dconv/configuration-1.5.html#4-server
+    # HANDLEBARS START
+
+    server 7d564ccfd2d3 172.16.238.12:3000 check
+
+    # HANDLEBARS END
+
+# Other links you will need later for this lab
+#
+# About cookies: http://cbonte.github.io/haproxy-dconv/configuration-1.5.html#4-cookie
+```
+
+Envoi des output dans **logs/task5/**
+
+```bash
+$ docker exec -ti ha ls -lah /nodes > logs/task5/nodes-directory-content-after-s1-stopped
+$ docker exec -ti ha cat /usr/local/etc/haproxy/haproxy.cfg > logs/task5/haproxy.cfg-after-s1-stopped
+```
+
+*In addition, provide a log file containing the output of the `docker ps` console. One file expected.*
+
+```bash
+$ docker ps > logs/task5/docker-ps-output-after-s1-stopped
+```
+
+*4. (Optional:) Propose a different approach to manage the list of backend nodes. You do not need to implement it. You can also propose your own tools or the ones you discovered online. In that case, do not forget to cite your references.*
+
+Désolé fin de semestre en flux tendu, je prends le coche du "Optionnel" pour ne pas répondre à cette question.
 
 ## Task 6
 
+*We will try to make HAProxy reload his config with minimal downtime. At the moment, we will replace the line `TODO: [CFG] Replace this command` in [ha/services/ha/run](ha/services/ha/run) by the following script part. As usual, take the time to read the comments.*
 
+```bash
+
+```
 
 
 
