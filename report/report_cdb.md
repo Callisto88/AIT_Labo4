@@ -4,9 +4,7 @@
 
 ## Introduction
 
-An introduction describing briefly the lab
-
-Play with Docker =)
+L'idée de ce laboratoire est de jouer un peu avec Docker et HAProxy pour tenter d'avoir une architecture la plus dynamique possible et qui soit capable de réagir automatiquement en cas d'ajout / retrait de node backend. Notamment pouvoir régénérer la configuration d'HAProxy sur la base d'événements.
 
 ## Task 0
 
@@ -1871,17 +1869,102 @@ Désolé fin de semestre en flux tendu, je prends le coche du "Optionnel" pour n
 
 *We will try to make HAProxy reload his config with minimal downtime. At the moment, we will replace the line `TODO: [CFG] Replace this command` in [ha/services/ha/run](ha/services/ha/run) by the following script part. As usual, take the time to read the comments.*
 
-```bash
+Mise à jour **ha/services/ha/run** : OK
 
+*We need to update our `member-join` and `member-leave` scripts to make sure HAProxy
+will be restarted when its configuration is modified. For that, in both files, replace `TODO: [CFG] Add the command to restart HAProxy` by the following command.*
+
+Dans **member-join.sh** et **member-leave.sh**
+
+```bash
+[...]
+
+  # Send a SIGHUP to the process. It will restart HAProxy
+  s6-svc -h /var/run/s6/services/ha
+fi
 ```
 
+*It's time to build and run our images. At this stage, if you try to reach http://192.168.42.42`, it will not work. No surprise as we do not start any backend node. Let's start one container and try to reach the same URL.*
 
+```bash
+$ docker-compose up -d --build --force-recreate
+```
+
+![](assets/img/task-6-01-503-service-unavailable.png)
+
+Quelques secondes plus tard
+
+*You can start the web application nodes. If everything works well, you could reach your backend application through the load balancer.*
+
+![](assets/img/task-6-02-after-a-few-seconds.png)*And now you can start and stop any number of nodes you want! You will see the dynamic reconfiguration occurring. *
+
+
+
+
+
+*Keep in mind that HAProxy will take few seconds before nodes will be available. The reason is that HAProxy is not so quick to restart inside the container and your web application is also taking time to bootstrap. And finally, depending of the health checks of HAProxy, your web app will not be available instantly.*
+
+*Finally, we achieved our goal to build an architecture that is dynamic and reacts to nodes coming and going!*
+
+**Deliverables**
+
+*1. Take a screenshots of the HAProxy stat page showing more than 2 web applications running. Additional screenshots are welcome to see a sequence of experimentations like shutting down a node and starting more nodes.*
+
+Ajout d'un node supplémentaire
+
+```bash
+$ docker ps
+CONTAINER ID        IMAGE                     COMMAND             CREATED             STATUS              PORTS                                                                                    NAMES
+648347d651be        novagrant_haproxy         "/init"             16 seconds ago      Up 13 seconds       0.0.0.0:80->80/tcp, 7373/tcp, 0.0.0.0:1936->1936/tcp, 0.0.0.0:9999->9999/tcp, 7946/tcp   ha
+381b4e4b5fa3        softengheigvd/webapp:s2   "/init"             28 seconds ago      Up 26 seconds       3000/tcp, 7373/tcp, 7946/tcp                                                             s2
+3b531bf4f406        softengheigvd/webapp:s1   "/init"             29 seconds ago      Up 26 seconds       3000/tcp, 7373/tcp, 7946/tcp                                                             s1
+5e3b3a140337        softengheigvd/webapp:s3   "/init"             32 seconds ago      Up 32 seconds       3000/tcp, 7373/tcp, 7946/tcp                                                             s3
+```
+
+![](assets/img/task-6-05-haproxy-stats-page.png)
+
+Inspection des logs serf sur ha
+
+```bash
+$ docker exec -it ha tail -f /var/log/serf.log
+Member join script triggered
+Member join script triggered
+Member join event received from: 3b531bf4f406 with role backend
+Member join event received from: 5e3b3a140337 with role backend
+Member join event received from: 381b4e4b5fa3 with role backend
+```
+
+Le nouveau node est bien pris en compte dynamiquement !
+
+Arrêt de **s1**. On voit la réaction du trigger dans le container **ha**
+
+![](assets/img/task-6-03-stop-s1-wait-for-trigger.png)
+
+Puis restart de **s1**, à nouveau serf réagit via le trigger **member-join**
+
+![](assets/img/task-6-03-restart-s1-wait-for-trigger.png)
+
+*Also provide the output of `docker ps` in a log file. At least one file is expected. You can provide one output per step of your experimentation according to your screenshots.*
+
+```bash
+$ mkdir -p logs/task6
+$ docker ps >logs/task6/docker-ps-output-3-nodes
+```
+
+*2. Give your own feelings about the final solution. Propose improvements or ways to do the things differently. If any, provide references to your readings for the improvements.*
+
+ça fonctionne pas trop mal =). Un poil bricolage à mon goût. Parmis les améliorations que je verrais il y aurait : un temps de réaction plus rapide aux événements (en cas de forte charge sur des backends déployés il faut pouvoir "poppé" d'autres backends plus rapidement).
+
+Autre point où je verrais une possible amélioration ; le rechargement de la configuration HAProxy. En l'état on a un downtime au moment où la configuration est rechargée. Or il serait possible de le faire sans downtime par exemple avec une stratégie blue-green.
+
+*3. (Optional:) Present a live demo where you add and remove a backend container.*
+
+Voir screenshots précédents.
 
 ## Difficulties
 
-describe the problems you have encountered and
-
-
+Rien de particulier apart peut-être dans la Task 4 ou je ne suis pas certain de savoir si c'était voulu de n'avoir **>** au lieu de **>>** pour générer le template dans **/tmp/haproxy.cfg** donc dans le doute j'ai fais les deux scénarios. 
 
 ## Conclusion
 
+Laboratoire très intéressant qui démontre bien qu'il n'existe pas de solution parfaite et qu'il ne faut pas hésiter à se retrousser les manches, faire des scripts personnalisés, fouiller dans les logs et mettre en ensemble plusieurs solutions existantes pour atteindre un objectif.

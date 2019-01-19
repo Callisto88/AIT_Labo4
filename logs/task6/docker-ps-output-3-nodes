@@ -1,0 +1,5 @@
+CONTAINER ID        IMAGE                     COMMAND             CREATED              STATUS              PORTS                                                                                    NAMES
+648347d651be        novagrant_haproxy         "/init"             52 seconds ago       Up 49 seconds       0.0.0.0:80->80/tcp, 7373/tcp, 0.0.0.0:1936->1936/tcp, 0.0.0.0:9999->9999/tcp, 7946/tcp   ha
+381b4e4b5fa3        softengheigvd/webapp:s2   "/init"             About a minute ago   Up About a minute   3000/tcp, 7373/tcp, 7946/tcp                                                             s2
+3b531bf4f406        softengheigvd/webapp:s1   "/init"             About a minute ago   Up About a minute   3000/tcp, 7373/tcp, 7946/tcp                                                             s1
+5e3b3a140337        softengheigvd/webapp:s3   "/init"             About a minute ago   Up About a minute   3000/tcp, 7373/tcp, 7946/tcp                                                             s3

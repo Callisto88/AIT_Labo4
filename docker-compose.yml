@@ -20,6 +20,7 @@ services:
     links:
       - webapp1
       - webapp2
+      - webapp3
     networks:
       heig:
         ipv4_address: 172.16.238.10
@@ -51,3 +52,17 @@ services:
     networks:
       heig:
         ipv4_address: 172.16.238.12
+  webapp3:
+    image: softengheigvd/webapp:s3
+    build:
+      context: ./webapp
+      dockerfile: Dockerfile
+    container_name: s3
+    restart: always
+    environment:
+      - SERVER_TAG=s3
+      - SERVER_NAME=s3
+      - SERVER_IP=172.16.238.13
+    networks:
+      heig:
+        ipv4_address: 172.16.238.13
